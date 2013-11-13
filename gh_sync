@@ -1,0 +1,146 @@
+#!/usr/bin/env python
+
+import json
+import re
+import requests
+from requests.auth import HTTPBasicAuth
+import ConfigParser
+import os
+import subprocess
+import logging
+
+def readConfig(configFile='~/.gitlabsyncrc'):
+    config = ConfigParser.ConfigParser()
+    config.read(configFile)
+
+    # Read in core options
+    conf = {}
+    conf['githuborg'] = config.get('global','gitHubOrgName')
+    conf['gitlaborg'] = config.get('global','gitLabNSpace')
+    conf['gitlabRepoBase'] = config.get('global','gitLabRepos')
+    conf['GHtoken'] = config.get('global','gitHubToken')
+    conf['GLtoken'] = config.get('global','gitLabToken')
+    conf['GLurl'] = config.get('global','gitLabUrl')+'/api/v3/'
+
+    return conf
+
+def translateRepoName(repo):
+    # Downcase string
+    #gitlabRepo = repo.lower()
+    return re.sub('\.', '-', repo.lower())
+
+def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
+    config = ConfigParser.ConfigParser()
+    config.read(configFile)
+
+    # Return value, with defaults:
+    conf = {'gitlaborg': config.get('global','gitLabNSpace'),
+            'gitlabRepo': translateRepoName(repo)}
+
+    if config.has_section(repo):
+        if config.has_option(repo,'gitLabNSpace'):
+            conf['gitlaborg'] = config.get(repo,'gitLabNSpace')
+        if config.has_option(repo,'gitLabRepoName'):
+            conf['gitlabRepo'] = config.get(repo,'gitLabRepoName')
+    return conf
+
+def urlEncodeProjectName(string):
+    stringFixed = re.sub('/', '%2F', string.lower())
+    stringFixed = re.sub('\.', '%2E', stringFixed)
+    stringFixed = re.sub(' ', '%20', stringFixed)
+    #stringFixed = re.sub('-', '%2D', stringFixed)
+    return stringFixed
+
+logging.basicConfig(filename='example.log', 
+                    format='%(asctime)s [%(levelname)s] %(message)s', 
+                    datefmt='%Y-%m-%dT%H:%M%S', 
+                    level=logging.INFO)
+logging.info('Starting gitHub sync')
+
+myConfigFile = os.getcwd()+'/gh_sync.conf'
+config = readConfig(myConfigFile)
+glHeader = { 'PRIVATE-TOKEN' : config['GLtoken'] }
+ghReposRaw = requests.get('https://api.github.com/orgs/'+config['githuborg']+'/repos',
+                          auth=HTTPBasicAuth(config['GHtoken'],''))
+ghRepoJson = json.loads(ghReposRaw.text or ghReposRaw.content)
+
+
+for r in ghRepoJson:
+    repoConfig = getRepoConfig(r['name'], myConfigFile)
+    
+    remote_url = r['ssh_url']
+    
+    # Variables to hold repository information
+    repo_path = ''
+    
+
+    # Check if gitlabrepository exists
+    projectUrl = urlEncodeProjectName(repoConfig['gitlaborg']+'/'+repoConfig['gitlabRepo'])
+    glRepoRaw = requests.get('http://gitlab.gfdl.noaa.gov/api/v3/projects/'+projectUrl, headers=glHeader)
+    if glRepoRaw.status_code != requests.codes.ok:
+        logging.debug("Unable to find GitLab repository")
+        # Get the group ID
+        groupId = -1
+        glGroupRaw = requests.get('http://gitlab.gfdl.noaa.gov/api/v3/groups', headers=glHeader)
+        if glGroupRaw.status_code == requests.codes.ok:
+            glGroup = json.loads(glGroupRaw.text or glGroupRaw.content)
+            for g in glGroup:
+                if g['name'] == repoConfig['gitlaborg']:
+                    groupId = g['id']
+                    break
+            if groupId <= 0:
+                logging.info("Creating new group: "+repoConfig['gitlaborg'])
+                payload={ 'name': repoConfig['gitlaborg'], 'path': repoConfig['gitlaborg'] }
+                glGroupCreateRaw = requests.post('http://gitlab.gfdl.noaa.gov/api/v3/groups', payload, headers=glHeader)
+                glGroupCreate = json.loads(glGroupCreateRaw.text or glGroupCreateRaw.content)
+                groupId = glGroupCreate['id']
+        else:
+            continue
+        logging.info("Creating new repository: "+repoConfig['gitlaborg']+'/'+r['name'])
+        payload = { 'name': r['name'], 'namespace_id': groupId }
+        glProjectRaw = requests.post('http://gitlab.gfdl.noaa.gov/api/v3/projects', payload, headers=glHeader)
+        glProject = json.loads(glProjectRaw.text or glProjectRaw.content)
+        repo_path = glProject['path_with_namespace']+'.git'
+    else:
+        glRepoJson = json.loads(glRepoRaw.text or glRepoRaw.content)
+        repo_path = glRepoJson['path_with_namespace']+'.git'
+
+    # Check if remote is available
+    logging.debug("Checking for git remote on repository: "+os.path.join(config['gitlabRepoBase'],repo_path))
+    pr = subprocess.Popen(['git', 'remote', '-v'],
+                          cwd=os.path.join(config['gitlabRepoBase'],repo_path),
+                          stdout=subprocess.PIPE, 
+                          stderr=subprocess.PIPE,
+                          shell=False)
+    (out, err) = pr.communicate()
+    if err:
+        logging.warning("git remote -v\n"+err)
+
+    remote_name = ''
+    match = re.search('(\S+)\s+git@github.com:\S+\s+\(fetch\)', out)
+    if match:
+        remote_name = match.group(1)
+    else:
+        # If remote doesn't exist, setup the remote
+        remote_name = 'github'
+        logging.info("Adding remote to repository: "+os.path.join(config['gitlabRepoBase']+repo_path))
+        pr = subprocess.Popen(['git', 'remote', 'add', '--tags', '--mirror=fetch', remote_name, remote_url],
+                              cwd=os.path.join(config['gitlabRepoBase'],repo_path),
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.PIPE,
+                              shell=False)
+        (out, err) = pr.communicate()
+        if err:
+            logging.warning("git remote add --tags --mirror=fetch "+remote_name+remote_url+"\n"+err)
+    # Use remote name to fetch (if it exists)
+    logging.info("Fetching remote repository: "+remote_url)
+    pr = subprocess.Popen(['git', 'fetch', remote_name, '*:*'],
+                          cwd=os.path.join(config['gitlabRepoBase'],repo_path),
+                          stdout=subprocess.PIPE, 
+                          stderr=subprocess.PIPE,
+                          shell=False)
+    (out, err) = pr.communicate()
+    if out:
+        logging.info("git fetch "+remote_name+" *:*\n"+out)
+    if err:
+        logging.warning("git fetch "+remote_name+" *:*\n"+err)

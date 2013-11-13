@@ -1,0 +1,11 @@
+[global]
+gitLabUrl: http://10.0.0.1
+gitHubOrgName: test
+gitLabNSpace: test
+gitLabRepos: /home/git/repositories
+gitHubToken: <gitHub_private_token>
+gitLabToken: <gitLab_private_token>
+
+[gitlab.repo.name]
+gitLabNSpace: myNameSpace
+gitLabRepoName: gitlab_repo_name
