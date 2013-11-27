@@ -8,6 +8,7 @@ import ConfigParser
 import os
 import subprocess
 import logging
+import time
 
 def readConfig(configFile='~/.gitlabsyncrc'):
     config = ConfigParser.ConfigParser()
@@ -64,8 +65,7 @@ ghReposRaw = requests.get('https://api.github.com/orgs/'+config['githuborg']+'/r
                           auth=HTTPBasicAuth(config['GHtoken'],''))
 ghRepoJson = json.loads(ghReposRaw.text or ghReposRaw.content)
 
-glApi='/api/v3/'
-glUrl=config['gitLabUrl']+glApi
+glUrl=config['GLurl']
 
 
 for r in ghRepoJson:
@@ -105,6 +105,8 @@ for r in ghRepoJson:
         glProjectRaw = requests.post(glUrl+'projects', payload, headers=glHeader)
         glProject = json.loads(glProjectRaw.text or glProjectRaw.content)
         repo_path = glProject['path_with_namespace']+'.git'
+        while not os.path.exists(repo_path):
+                time.sleep(5)
     else:
         glRepoJson = json.loads(glRepoRaw.text or glRepoRaw.content)
         repo_path = glRepoJson['path_with_namespace']+'.git'
