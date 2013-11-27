@@ -69,6 +69,7 @@ glUrl=config['gitLabUrl']+glApi
 
 
 for r in ghRepoJson:
+    logging.info('Starting sync of '+r['name'])
     repoConfig = getRepoConfig(r['name'], myConfigFile)
     
     remote_url = r['ssh_url']
@@ -95,7 +96,7 @@ for r in ghRepoJson:
                 logging.info("Creating new group: "+repoConfig['gitlaborg'])
                 payload={ 'name': repoConfig['gitlaborg'], 'path': repoConfig['gitlaborg'] }
                 glGroupCreateRaw = requests.post(glUrl+'groups', payload, headers=glHeader)
-                glGroupCreate = json.loads(glGroupCreateRaw.text or glGroupCreateRaw.content)
+                glGroupCreate = json.loads(glGroupCreateRaw.text or glGroupCrea2teRaw.content)
                 groupId = glGroupCreate['id']
         else:
             continue
@@ -147,3 +148,5 @@ for r in ghRepoJson:
         logging.info("git fetch "+remote_name+" *:*\n"+out)
     if err:
         logging.warning("git fetch "+remote_name+" *:*\n"+err)
+
+logging.info('Ending gitHub sync')
