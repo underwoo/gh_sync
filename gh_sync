@@ -64,6 +64,9 @@ ghReposRaw = requests.get('https://api.github.com/orgs/'+config['githuborg']+'/r
                           auth=HTTPBasicAuth(config['GHtoken'],''))
 ghRepoJson = json.loads(ghReposRaw.text or ghReposRaw.content)
 
+glApi='/api/v3/'
+glUrl=config['gitLabUrl']+glApi
+
 
 for r in ghRepoJson:
     repoConfig = getRepoConfig(r['name'], myConfigFile)
@@ -76,12 +79,12 @@ for r in ghRepoJson:
 
     # Check if gitlabrepository exists
     projectUrl = urlEncodeProjectName(repoConfig['gitlaborg']+'/'+repoConfig['gitlabRepo'])
-    glRepoRaw = requests.get('http://gitlab.gfdl.noaa.gov/api/v3/projects/'+projectUrl, headers=glHeader)
+    glRepoRaw = requests.get(glUrl+'projects/'+projectUrl, headers=glHeader)
     if glRepoRaw.status_code != requests.codes.ok:
         logging.debug("Unable to find GitLab repository")
         # Get the group ID
         groupId = -1
-        glGroupRaw = requests.get('http://gitlab.gfdl.noaa.gov/api/v3/groups', headers=glHeader)
+        glGroupRaw = requests.get(glUrl+'groups', headers=glHeader)
         if glGroupRaw.status_code == requests.codes.ok:
             glGroup = json.loads(glGroupRaw.text or glGroupRaw.content)
             for g in glGroup:
@@ -91,14 +94,14 @@ for r in ghRepoJson:
             if groupId <= 0:
                 logging.info("Creating new group: "+repoConfig['gitlaborg'])
                 payload={ 'name': repoConfig['gitlaborg'], 'path': repoConfig['gitlaborg'] }
-                glGroupCreateRaw = requests.post('http://gitlab.gfdl.noaa.gov/api/v3/groups', payload, headers=glHeader)
+                glGroupCreateRaw = requests.post(glUrl+'groups', payload, headers=glHeader)
                 glGroupCreate = json.loads(glGroupCreateRaw.text or glGroupCreateRaw.content)
                 groupId = glGroupCreate['id']
         else:
             continue
         logging.info("Creating new repository: "+repoConfig['gitlaborg']+'/'+r['name'])
         payload = { 'name': r['name'], 'namespace_id': groupId }
-        glProjectRaw = requests.post('http://gitlab.gfdl.noaa.gov/api/v3/projects', payload, headers=glHeader)
+        glProjectRaw = requests.post(glUrl+'projects', payload, headers=glHeader)
         glProject = json.loads(glProjectRaw.text or glProjectRaw.content)
         repo_path = glProject['path_with_namespace']+'.git'
     else:
