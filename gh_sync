@@ -151,4 +151,16 @@ for r in ghRepoJson:
     if err:
         logging.warning("git fetch "+remote_name+" *:*\n"+err)
 
+# Clear cache
+pr = subprocess.Popen(['bundle', 'exec', 'rake', 'cache:clear', 'RAILS_ENV=production'],
+                      cwd='/home/git/gitlab',
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE,
+                      shell=False)
+(out, err) = pr.communicate()
+if out:
+    logging.info("bundle exec rake cache:clear RAILS_ENV=production\n"+out)
+if err:
+    logging.info("bundle exec rake cache:clear RAILS_ENV=production\n"+err)
+
 logging.info('Ending gitHub sync')
