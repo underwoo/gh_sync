@@ -105,7 +105,7 @@ for r in ghRepoJson:
         glProjectRaw = requests.post(glUrl+'projects', payload, headers=glHeader)
         glProject = json.loads(glProjectRaw.text or glProjectRaw.content)
         repo_path = glProject['path_with_namespace']+'.git'
-        while not os.path.exists(repo_path):
+        while not os.path.exists(os.path.join(config['gitlabRepoBase'],repo_path)):
                 time.sleep(5)
     else:
         glRepoJson = json.loads(glRepoRaw.text or glRepoRaw.content)
