@@ -52,7 +52,7 @@ def urlEncodeProjectName(string):
     #stringFixed = re.sub('-', '%2D', stringFixed)
     return stringFixed
 
-logging.basicConfig(filename='gh_sync.log', 
+logging.basicConfig(filename='/home/git/gitlab/log/gh_sync.log', 
                     format='%(asctime)s [%(levelname)s] %(message)s', 
                     datefmt='%Y-%m-%dT%H:%M:%S', 
                     level=logging.INFO)
