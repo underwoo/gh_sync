@@ -54,8 +54,9 @@ def urlEncodeProjectName(string):
 
 logging.basicConfig(filename='gh_sync.log', 
                     format='%(asctime)s [%(levelname)s] %(message)s', 
-                    datefmt='%Y-%m-%dT%H:%M%S', 
+                    datefmt='%Y-%m-%dT%H:%M:%S', 
                     level=logging.INFO)
+logging.info('*' * 52)
 logging.info('Starting gitHub sync')
 
 myConfigFile = os.getcwd()+'/gh_sync.conf'
