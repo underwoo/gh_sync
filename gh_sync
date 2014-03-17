@@ -129,15 +129,15 @@ for r in ghRepoJson:
     else:
         # If remote doesn't exist, setup the remote
         remote_name = 'github'
-        logging.info("Adding remote to repository: "+os.path.join(config['gitlabRepoBase']+repo_path))
-        pr = subprocess.Popen(['git', 'remote', 'add', '--tags', '--mirror=fetch', remote_name, remote_url],
+        logging.info("Adding remote to repository: "+os.path.join(config['gitlabRepoBase'],repo_path))
+        pr = subprocess.Popen(['git', 'remote', 'add', '--mirror=fetch', remote_name, remote_url],
                               cwd=os.path.join(config['gitlabRepoBase'],repo_path),
                               stdout=subprocess.PIPE, 
                               stderr=subprocess.PIPE,
                               shell=False)
         (out, err) = pr.communicate()
         if err:
-            logging.warning("git remote add --tags --mirror=fetch "+remote_name+remote_url+"\n"+err)
+            logging.warning("git remote add --mirror=fetch "+remote_name+" "+remote_url+"\n"+err)
     # Use remote name to fetch (if it exists)
     logging.info("Updating remote repository: "+remote_url)
     pr = subprocess.Popen(['git', 'remote', '-v', 'update', '-p', remote_name],
