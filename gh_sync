@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 
-import json
 import re
-import requests
-from requests.auth import HTTPBasicAuth
 import ConfigParser
 import os
 import subprocess
 import logging
 import time
+
+import sys
+sys.path.append('./lib')
+import github
+import gitlab
 
 def readConfig(configFile='~/.gitlabsyncrc'):
     config = ConfigParser.ConfigParser()
@@ -21,14 +23,10 @@ def readConfig(configFile='~/.gitlabsyncrc'):
     conf['gitlabRepoBase'] = config.get('global','gitLabRepos')
     conf['GHtoken'] = config.get('global','gitHubToken')
     conf['GLtoken'] = config.get('global','gitLabToken')
-    conf['GLurl'] = config.get('global','gitLabUrl')+'/api/v3/'
+    conf['GLurl'] = config.get('global','gitLabUrl')
+    conf['logDir'] = config.get('global','logDir')
 
     return conf
-
-def translateRepoName(repo):
-    # Downcase string
-    #gitlabRepo = repo.lower()
-    return re.sub('\.', '-', repo.lower())
 
 def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
     config = ConfigParser.ConfigParser()
@@ -36,7 +34,7 @@ def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
 
     # Return value, with defaults:
     conf = {'gitlaborg': config.get('global','gitLabNSpace'),
-            'gitlabRepo': translateRepoName(repo)}
+            'gitlabRepo': repo}
 
     if config.has_section(repo):
         if config.has_option(repo,'gitLabNSpace'):
@@ -45,123 +43,108 @@ def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
             conf['gitlabRepo'] = config.get(repo,'gitLabRepoName')
     return conf
 
-def urlEncodeProjectName(string):
-    stringFixed = re.sub('/', '%2F', string.lower())
-    stringFixed = re.sub('\.', '%2E', stringFixed)
-    stringFixed = re.sub(' ', '%20', stringFixed)
-    #stringFixed = re.sub('-', '%2D', stringFixed)
-    return stringFixed
+def getRepoRemoteName(repo_path, remote_url):
+    """Return the repository's remote name.  This only returns the first
+    remote name that matches remote_url (if there are more than one).  If
+    the remote name doesn't exist, then it creates a 'github' remote in the
+    repository at repo_path (repo_path must exist)."""
 
-logging.basicConfig(filename='/home/git/gitlab/log/gh_sync.log', 
-                    format='%(asctime)s [%(levelname)s] %(message)s', 
-                    datefmt='%Y-%m-%dT%H:%M:%S', 
-                    level=logging.INFO)
-logging.info('*' * 52)
-logging.info('Starting gitHub sync')
+    # Default return is None
+    remote_name = None
 
-myConfigFile = os.getcwd()+'/gh_sync.conf'
-config = readConfig(myConfigFile)
-glHeader = { 'PRIVATE-TOKEN' : config['GLtoken'] }
-ghReposRaw = requests.get('https://api.github.com/orgs/'+config['githuborg']+'/repos',
-                          auth=HTTPBasicAuth(config['GHtoken'],''))
-ghRepoJson = json.loads(ghReposRaw.text or ghReposRaw.content)
-
-glUrl=config['GLurl']
-
-
-for r in ghRepoJson:
-    logging.info('Starting sync of '+r['name'])
-    repoConfig = getRepoConfig(r['name'], myConfigFile)
-    
-    remote_url = r['ssh_url']
-    
-    # Variables to hold repository information
-    repo_path = ''
-    
-
-    # Check if gitlabrepository exists
-    projectUrl = urlEncodeProjectName(repoConfig['gitlaborg']+'/'+repoConfig['gitlabRepo'])
-    glRepoRaw = requests.get(glUrl+'projects/'+projectUrl, headers=glHeader)
-    if glRepoRaw.status_code != requests.codes.ok:
-        logging.debug("Unable to find GitLab repository")
-        # Get the group ID
-        groupId = -1
-        glGroupRaw = requests.get(glUrl+'groups', headers=glHeader)
-        if glGroupRaw.status_code == requests.codes.ok:
-            glGroup = json.loads(glGroupRaw.text or glGroupRaw.content)
-            for g in glGroup:
-                if g['name'] == repoConfig['gitlaborg']:
-                    groupId = g['id']
-                    break
-            if groupId <= 0:
-                logging.info("Creating new group: "+repoConfig['gitlaborg'])
-                payload={ 'name': repoConfig['gitlaborg'], 'path': repoConfig['gitlaborg'] }
-                glGroupCreateRaw = requests.post(glUrl+'groups', payload, headers=glHeader)
-                glGroupCreate = json.loads(glGroupCreateRaw.text or glGroupCrea2teRaw.content)
-                groupId = glGroupCreate['id']
-        else:
-            continue
-        logging.info("Creating new repository: "+repoConfig['gitlaborg']+'/'+r['name'])
-        payload = { 'name': r['name'], 'namespace_id': groupId }
-        glProjectRaw = requests.post(glUrl+'projects', payload, headers=glHeader)
-        glProject = json.loads(glProjectRaw.text or glProjectRaw.content)
-        repo_path = glProject['path_with_namespace']+'.git'
-        while not os.path.exists(os.path.join(config['gitlabRepoBase'],repo_path)):
-                time.sleep(5)
-    else:
-        glRepoJson = json.loads(glRepoRaw.text or glRepoRaw.content)
-        repo_path = glRepoJson['path_with_namespace']+'.git'
-
-    # Check if remote is available
-    logging.debug("Checking for git remote on repository: "+os.path.join(config['gitlabRepoBase'],repo_path))
-    pr = subprocess.Popen(['git', 'remote', '-v'],
-                          cwd=os.path.join(config['gitlabRepoBase'],repo_path),
-                          stdout=subprocess.PIPE, 
-                          stderr=subprocess.PIPE,
-                          shell=False)
-    (out, err) = pr.communicate()
-    if err:
-        logging.warning("git remote -v\n"+err)
-
-    remote_name = ''
-    match = re.search('(\S+)\s+git@github.com:\S+\s+\(fetch\)', out)
-    if match:
-        remote_name = match.group(1)
-    else:
-        # If remote doesn't exist, setup the remote
-        remote_name = 'github'
-        logging.info("Adding remote to repository: "+os.path.join(config['gitlabRepoBase'],repo_path))
-        pr = subprocess.Popen(['git', 'remote', 'add', '--mirror=fetch', remote_name, remote_url],
-                              cwd=os.path.join(config['gitlabRepoBase'],repo_path),
-                              stdout=subprocess.PIPE, 
+    # Check if repo_path exists
+    if os.path.isdir(repo_path):
+        # Check if remote is available
+        logging.debug("Checking for git remote in repository: "+repo_path)
+        pr = subprocess.Popen(['git', 'remote', '-v'],
+                              cwd=repo_path,
+                              stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE,
                               shell=False)
         (out, err) = pr.communicate()
         if err:
-            logging.warning("git remote add --mirror=fetch "+remote_name+" "+remote_url+"\n"+err)
-    # Use remote name to fetch (if it exists)
-    logging.info("Updating remote repository: "+remote_url)
-    pr = subprocess.Popen(['git', 'remote', '-v', 'update', '-p', remote_name],
-                          cwd=os.path.join(config['gitlabRepoBase'],repo_path),
-                          stdout=subprocess.PIPE, 
-                          stderr=subprocess.PIPE,
-                          shell=False)
-    (out, err) = pr.communicate()
-    if out:
-        logging.info("git remote update "+remote_name+"\n"+out)
-    if err:
-        logging.warning("git remote update "+remote_name+"\n"+err)
+            logging.warning("git remote -v\n"+err)
 
-# Clear cache
-pr = subprocess.Popen(['bundle', 'exec', 'rake', 'cache:clear', 'RAILS_ENV=production'],
-                      cwd='/home/git/gitlab',
-                      stdout=subprocess.PIPE,
-                      stderr=subprocess.PIPE,
-                      shell=False)
-(out, err) = pr.communicate()
-if out:
-    logging.info("bundle exec rake cache:clear RAILS_ENV=production\n"+out)
-if err:
-    logging.info("bundle exec rake cache:clear RAILS_ENV=production\n"+err)
+        match = re.search('(\S+)\s'+str(remote_url)+'\s+\(fetch\)', out)
+        if match:
+            remote_name = match.group(1)
+        else:
+            # Remote doesn't exist, setup the remote
+            remote_name = 'github'
+            logging.info("Adding remote to repository: "+repo_path)
+            pr = subprocess.Popen(['git', 'remote', 'add', '--mirror=fetch', remote_name, remote_url],
+                                  cwd=repo_path,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,
+                                  shell=False)
+            (out, err) = pr.communicate()
+            if err:
+                logging.warning("git remote add --mirror=fetch "+remote_name+" "+ghRepo.ssh_url+"\n"+err)
+    return remote_name
 
-logging.info('Ending gitHub sync')
+def updateRepo(source_url, target_path):
+    remote_name = getRepoRemoteName(target_path, source_url)
+
+    if remote_name:
+        logging.info("Updating remote repository: "+source_url)
+        pr = subprocess.Popen(['git', 'remote', '-v', 'update', '-p', remote_name],
+                              cwd=target_path,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE,
+                              shell=False)
+        (out, err) = pr.communicate()
+        if out:
+            logging.info("git remote update "+remote_name+"\n"+out)
+        if err:
+            logging.warning("git remote update "+remote_name+"\n"+err)
+
+# Main program
+def main():
+    myConfigFile = os.getcwd()+'/gh_sync.conf'
+    config = readConfig(myConfigFile)
+
+    logging.basicConfig(filename=config['logDir']+'/gh_sync.log',
+                        format='%(asctime)s [%(levelname)s] %(message)s',
+                        datefmt='%Y-%m-%dT%H:%M:%S',
+                        level=logging.INFO)
+    logging.info('*' * 72)
+    logging.info('Starting gitHub sync')
+
+    # Connect to gitHub
+    gh = github.Github(token=config['GHtoken'])
+
+    # Connect to gitlab
+    gl = gitlab.Gitlab(config['GLurl'], config['GLtoken'])
+
+    for ghRepo in gh.getRepos(name=config['githuborg'], type="orgs"):
+        logging.info('Starting sync of '+ghRepo.name)
+
+        repoConfig = getRepoConfig(ghRepo.name, myConfigFile)
+
+        glProject = gl.findProject(ghRepo.name, repoConfig['gitlaborg'])
+        if glProject.id == -1:
+            # No gitlab project found
+            logging.info("Creating new repository: "+repoConfig['gitlaborg']+'/'+ghRepo.name)
+            glProject = gl.createProject(ghRepo.name, repoConfig['gitlaborg'],
+                                    wiki_enabled=ghRepo.has_wiki)
+            # Give time for the repository directory to be created
+            time.sleep(5)
+
+        # Sync the project repository
+        updateRepo(ghRepo.ssh_url, os.path.join(config['gitlabRepoBase'],glProject.path))
+
+        # Now sync the wiki repo
+        if ghRepo.has_wiki:
+            # Verify that the wiki path exists
+            gl_wiki_path = os.path.join(config['gitlabRepoBase'],glProject.wiki_path)
+            if not os.path.isdir(gl_wiki_path):
+                # Simply touch the wiki page to create the wiki repository
+                gl.touchProjectWiki(glProject)
+                # Give time for the repository directory to be created
+                time.sleep(5)
+            updateRepo(ghRepo.wiki_url, os.path.join(config['gitlabRepoBase'],glProject.wiki_path))
+
+    logging.info('Ending gitHub sync')
+
+if __name__ == "__main__":
+    main()

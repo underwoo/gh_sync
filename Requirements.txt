@@ -1,0 +1,7 @@
+Requirements.txt
+
+Python packages:
+
+requests (Need URL)
+re (I think this is built in?)
+json (Is this built in?)

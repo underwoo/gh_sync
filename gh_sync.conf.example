@@ -5,6 +5,7 @@ gitLabNSpace: test
 gitLabRepos: /home/git/repositories
 gitHubToken: <gitHub_private_token>
 gitLabToken: <gitLab_private_token>
+logDir: /home/git/gh_sync/log
 
 [gitlab.repo.name]
 gitLabNSpace: myNameSpace
