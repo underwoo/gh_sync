@@ -20,7 +20,7 @@ class Gitlab:
           groups = json.loads(r.text or r.content)
           for g in groups:
               if g['name'] == name:
-                  group = GitlabGroup(g['id'], g['name'], g['path'], g['owner_id'])
+                  group = GitlabGroup(g['id'], g['name'], g['path'])
                   break
       return group
 
@@ -32,7 +32,7 @@ class Gitlab:
           r = requests.post(self._api_url+'groups', payload, headers=self._headers)
           if r.status_code == 201:
               g = json.loads(r.text or r.content)
-              group = GitlabGroup(g['id'], g['name'], g['path'], g['owner_id'])
+              group = GitlabGroup(g['id'], g['name'], g['path'])
       return group
 
   def findProject(self, name, group=None):
@@ -94,13 +94,11 @@ class GitlabGroup:
     id = -1
     name = None
     path = None
-    owner_id = -1
 
-    def __init__(self, id=-1, name=None, path=None, owner_id=-1):
+    def __init__(self, id=-1, name=None, path=None):
         setattr(self, 'id', id)
         setattr(self, 'name', name)
         setattr(self, 'path', path)
-        setattr(self, 'owner_id', owner_id)
 
 class GitlabProject:
     id = -1

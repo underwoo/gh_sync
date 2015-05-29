@@ -79,7 +79,7 @@ def getRepoRemoteName(repo_path, remote_url):
                                   shell=False)
             (out, err) = pr.communicate()
             if err:
-                logging.warning("git remote add --mirror=fetch "+remote_name+" "+ghRepo.ssh_url+"\n"+err)
+                logging.warning("git remote add --mirror=fetch "+remote_name+" "+remote_url+"\n"+err)
     return remote_name
 
 def updateRepo(source_url, target_path):
@@ -121,7 +121,7 @@ def main():
 
         repoConfig = getRepoConfig(ghRepo.name, myConfigFile)
 
-        glProject = gl.findProject(ghRepo.name, repoConfig['gitlaborg'])
+        glProject = gl.findProject(repoConfig['gitlabRepo'], repoConfig['gitlaborg'])
         if glProject.id == -1:
             # No gitlab project found
             logging.info("Creating new repository: "+repoConfig['gitlaborg']+'/'+ghRepo.name)
