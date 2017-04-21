@@ -6,9 +6,8 @@ import os
 import subprocess
 import logging
 import time
-
 import sys
-sys.path.append('./lib')
+
 import github
 import gitlab
 
@@ -130,20 +129,23 @@ def main():
             # Give time for the repository directory to be created
             time.sleep(5)
 
-        # Sync the project repository
-        updateRepo(ghRepo.ssh_url, os.path.join(config['gitlabRepoBase'],glProject.path))
+        if glProject.id != -1:
+            # Repository exists, Sync the project repository
+            updateRepo(ghRepo.ssh_url, os.path.join(config['gitlabRepoBase'],glProject.path))
 
-        # Now sync the wiki repo
-        if ghRepo.has_wiki:
-            # Verify that the wiki path exists
-            gl_wiki_path = os.path.join(config['gitlabRepoBase'],glProject.wiki_path)
-            if not os.path.isdir(gl_wiki_path):
-                # Simply touch the wiki page to create the wiki repository
-                gl.touchProjectWiki(glProject)
-                # Give time for the repository directory to be created
-                time.sleep(5)
-            updateRepo(ghRepo.wiki_url, os.path.join(config['gitlabRepoBase'],glProject.wiki_path))
-
+            # Now sync the wiki repo
+            if ghRepo.has_wiki:
+                # Verify that the wiki path exists
+                gl_wiki_path = os.path.join(config['gitlabRepoBase'],glProject.wiki_path)
+                if not os.path.isdir(gl_wiki_path):
+                    # Simply touch the wiki page to create the wiki repository
+                    gl.touchProjectWiki(glProject)
+                    # Give time for the repository directory to be created
+                    time.sleep(5)
+                updateRepo(ghRepo.wiki_url, os.path.join(config['gitlabRepoBase'],glProject.wiki_path))
+        else:
+            logging.info("Could not find project in gitlab "+"/".join([repoConfig['gitlaborg'],repoConfig['gitlabRepo']]))
+        logging.info('Ending sync of '+ghRepo.name)
     logging.info('Ending gitHub sync')
 
 if __name__ == "__main__":

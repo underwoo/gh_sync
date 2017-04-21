@@ -1,27 +1,26 @@
 import json
 import re
 import requests
+import urllib
 
 class Gitlab:
   _api_url = None
   _headers = None
 
   def __init__(self, url, token):
-    setattr(self, '_api_url', url+'/api/v3/')
+    setattr(self, '_api_url', url+'/api/v4')
     setattr(self, '_headers', { 'PRIVATE-TOKEN' : token })
-    r = requests.get(self._api_url, headers=self._headers)
+    r = requests.get('/'.join([self._api_url,'projects']), headers=self._headers)
     if (r.status_code != requests.codes.ok):
         raise AuthenticationError("Invalid token")
 
   def findGroup(self, name):
       group = GitlabGroup()
-      r = requests.get(self._api_url+'groups', headers=self._headers)
+      r = requests.get('/'.join([self._api_url,'groups',urllib.quote_plus(name)]), headers=self._headers)
       if r.status_code == requests.codes.ok:
-          groups = json.loads(r.text or r.content)
-          for g in groups:
-              if g['name'] == name:
-                  group = GitlabGroup(g['id'], g['name'], g['path'])
-                  break
+          g = json.loads(r.text or r.content)
+          if g['name'] == name:
+              group = GitlabGroup(g['id'], g['name'], g['path'])
       return group
 
   def createGroup(self, name):
@@ -29,7 +28,7 @@ class Gitlab:
       group = self.findGroup(name)
       if group.id == -1:
           payload={ 'name': name, 'path': name}
-          r = requests.post(self._api_url+'groups', payload, headers=self._headers)
+          r = requests.post('/'.join([self._api_url,'groups']), payload, headers=self._headers)
           if r.status_code == 201:
               g = json.loads(r.text or r.content)
               group = GitlabGroup(g['id'], g['name'], g['path'])
@@ -37,20 +36,18 @@ class Gitlab:
 
   def findProject(self, name, group=None):
       project = GitlabProject()
-      urlName = ''
       if group != None:
-          # Append group name to project name
+          grpName=""
           if isinstance(group, unicode) or isinstance(group, str):
-              urlName = self._urlEncodeProjectName(self._translateRepoName(group+'/'+name))
+              grpName = group
           elif isinstance(group, GitlabGroup):
-              urlName = self._urlEncodeProjectName(self._translateRepoName(group.name+'/'+name))
-      else:
-          urlName = self._urlEncodeProjectName(name)
-      r = requests.get(self._api_url+'projects/'+urlName, headers=self._headers)
-      if r.status_code == requests.codes.ok:
-          p = json.loads(r.text or r.content)
-          project = GitlabProject(p['id'], p['path'], p['path_with_namespace'],
-                                  p['web_url'], p['wiki_enabled'])
+              grpName = group.name
+          projectUrl=urllib.quote_plus('/'.join([grpName,name]))
+          r = requests.get('/'.join([self._api_url,'projects',projectUrl]), headers=self._headers)
+          if r.status_code == requests.codes.ok:
+              projects = json.loads(r.text or r.content)
+              project = GitlabProject(p['id'], p['path'], p['path_with_namespace'],
+                                      p['web_url'], p['wiki_enabled'])
       return project
 
   def createProject(self, name, group, wiki_enabled=False):
@@ -68,7 +65,7 @@ class Gitlab:
               g = self.createGroup(group.name)
       # TODO: see what import_url does
       payload = { 'name': name, 'namespace_id': g.id, 'wiki_enabled': str(wiki_enabled).lower() }
-      r = requests.post(self._api_url+'projects', payload, headers=self._headers)
+      r = requests.post('/'.join([self._api_url,'projects']), payload, headers=self._headers)
       if r.status_code == 201:
           p = json.loads(r.text or r.content)
           project = GitlabProject(p['id'], p['path'], p['path_with_namespace'],
@@ -83,12 +80,6 @@ class Gitlab:
   def _translateRepoName(self, repo):
       # Need to downcase string as well
       return re.sub('\.', '-', repo.lower())
-
-  def _urlEncodeProjectName(self, string):
-      stringFixed = re.sub('/', '%2F', string.lower())
-      stringFixed = re.sub('\.', '%2E', stringFixed)
-      stringFixed = re.sub(' ', '%20', stringFixed)
-      return stringFixed
 
 class GitlabGroup:
     id = -1
