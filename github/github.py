@@ -29,7 +29,7 @@ class Github:
     rs = json.loads(r.text or r.content)
     ghr = []
     for repo in rs:
-      ghr.append(GithubRepo(repo['name'], repo['ssh_url'], repo['clone_url'], repo['has_wiki']))
+      ghr.append(GithubRepo(repo['name'], repo['ssh_url'], repo['clone_url'], repo['has_wiki'] and repo['has_pages'))
     return ghr
 
 class GithubRepo:
@@ -37,6 +37,7 @@ class GithubRepo:
   name = None
   has_wiki = False
   wiki_url = None
+  wiki_ssh_url = None
 
   def __init__(self, name, ssh_url, clone_url, has_wiki):
     setattr(self, 'name', name)
@@ -44,7 +45,8 @@ class GithubRepo:
     setattr(self, 'clone_url', clone_url)
     setattr(self, 'has_wiki', has_wiki)
     if (has_wiki):
-        setattr(self, 'wiki_url', re.sub(r"\.git$", ".wiki.git", self.ssh_url))
+        setattr(self, 'wiki_url', re.sub(r"\.git$", ".wiki.git", self.clone_url))
+        setattr(self, 'wiki_ssh_url', re.sub(r"\.git$", ".wiki.git", self.ssh_url))
 
 class ConnectionError(Exception):
     def __init__(self, value):

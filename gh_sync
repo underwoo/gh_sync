@@ -156,7 +156,7 @@ def main():
                     gl.touchProjectWiki(glProject)
                     # Give time for the repository directory to be created
                     time.sleep(5)
-                updateRepo(ghRepo.wiki_url, os.path.join(config['gitlabRepoBase'],glProject.wiki_path))
+                updateRepo(ghRepo.wiki_url, os.path.join(config['gitlabRepoBase'],glProject.wiki_path), ghRepo.wiki_ssh_url)
         else:
             logging.info("Could not find project in gitlab "+"/".join([repoConfig['gitlaborg'],repoConfig['gitlabRepo']]))
         logging.info('Ending sync of '+ghRepo.name)
