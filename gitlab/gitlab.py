@@ -45,7 +45,7 @@ class Gitlab:
           projectUrl=urllib.quote_plus('/'.join([grpName,name]))
           r = requests.get('/'.join([self._api_url,'projects',projectUrl]), headers=self._headers)
           if r.status_code == requests.codes.ok:
-              projects = json.loads(r.text or r.content)
+              p = json.loads(r.text or r.content)
               project = GitlabProject(p['id'], p['path'], p['path_with_namespace'],
                                       p['web_url'], p['wiki_enabled'])
       return project

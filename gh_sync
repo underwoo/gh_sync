@@ -42,7 +42,7 @@ def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
             conf['gitlabRepo'] = config.get(repo,'gitLabRepoName')
     return conf
 
-def getRepoRemoteName(repo_path, remote_url):
+def getRepoRemoteName(repo_path, remote_url, ssh_url=None):
     """Return the repository's remote name.  This only returns the first
     remote name that matches remote_url (if there are more than one).  If
     the remote name doesn't exist, then it creates a 'github' remote in the
@@ -64,6 +64,20 @@ def getRepoRemoteName(repo_path, remote_url):
         if err:
             logging.warning("git remote -v\n"+err)
 
+        # Remove ssh remote
+        match = re.search('(\S+)\s'+str(ssh_url)+'\s+\(fetch\)', out)
+        if match and ssh_url != None:
+            remote_name = match.group(1)
+            pr = subprocess.Popen(['git', 'remote', '-v', 'remove', remote_name],
+                                  cwd=repo_path,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,
+                                  shell=False)
+            (out, err) = pr.communicate()
+            if err:
+                logging.warning("git remote remove "+remote_name+"\n"+err)
+            remote_name = None
+
         match = re.search('(\S+)\s'+str(remote_url)+'\s+\(fetch\)', out)
         if match:
             remote_name = match.group(1)
@@ -81,8 +95,8 @@ def getRepoRemoteName(repo_path, remote_url):
                 logging.warning("git remote add --mirror=fetch "+remote_name+" "+remote_url+"\n"+err)
     return remote_name
 
-def updateRepo(source_url, target_path):
-    remote_name = getRepoRemoteName(target_path, source_url)
+def updateRepo(source_url, target_path, ssh_url=None):
+    remote_name = getRepoRemoteName(target_path, source_url, ssh_url)
 
     if remote_name:
         logging.info("Updating remote repository: "+source_url)
@@ -131,7 +145,7 @@ def main():
 
         if glProject.id != -1:
             # Repository exists, Sync the project repository
-            updateRepo(ghRepo.ssh_url, os.path.join(config['gitlabRepoBase'],glProject.path))
+            updateRepo(ghRepo.clone_url, os.path.join(config['gitlabRepoBase'],glProject.path), ghRepo.ssh_url)
 
             # Now sync the wiki repo
             if ghRepo.has_wiki:
