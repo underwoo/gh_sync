@@ -29,7 +29,8 @@ class Github:
     rs = json.loads(r.text or r.content)
     ghr = []
     for repo in rs:
-      ghr.append(GithubRepo(repo['name'], repo['ssh_url'], repo['clone_url'], repo['has_wiki'] and repo['has_pages'))
+      repo_has_wiki=repo['has_wiki'] and repo['has_pages']
+      ghr.append(GithubRepo(repo['name'], repo['ssh_url'], repo['clone_url'], repo_has_wiki))
     return ghr
 
 class GithubRepo:
