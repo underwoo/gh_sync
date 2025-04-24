@@ -1,1 +1,1 @@
-from gitlab import Gitlab
+from .gitlab import Gitlab

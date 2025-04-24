@@ -16,7 +16,7 @@ class Gitlab:
 
   def findGroup(self, name):
       group = GitlabGroup()
-      r = requests.get('/'.join([self._api_url,'groups',urllib.quote_plus(name)]), headers=self._headers)
+      r = requests.get('/'.join([self._api_url,'groups',urllib.parse.quote_plus(name)]), headers=self._headers)
       if r.status_code == requests.codes.ok:
           g = json.loads(r.text or r.content)
           if g['name'] == name:
@@ -38,11 +38,12 @@ class Gitlab:
       project = GitlabProject()
       if group != None:
           grpName=""
-          if isinstance(group, unicode) or isinstance(group, str):
+          print(f"debug: {type(group)}")
+          if isinstance(group, str):
               grpName = group
           elif isinstance(group, GitlabGroup):
               grpName = group.name
-          projectUrl=urllib.quote_plus('/'.join([grpName,name]))
+          projectUrl=urllib.parse.quote_plus('/'.join([grpName,name]))
           r = requests.get('/'.join([self._api_url,'projects',projectUrl]), headers=self._headers)
           if r.status_code == requests.codes.ok:
               p = json.loads(r.text or r.content)
@@ -54,12 +55,12 @@ class Gitlab:
       project = GitlabProject()
       g = GitlabGroup()
       # Check if group exists, if not create group
-      if isinstance(group, str) or isinstance(group, unicode):
+      if isinstance(group, str):
           g = self.findGroup(group)
       elif isinstance(group, GitlabGroup):
           g = self.findGroup(group.name)
       if g.id < 0:
-          if isinstance(group, str) or isinstance(group, unicode):
+          if isinstance(group, str):
               g = self.createGroup(group)
           elif isinstance(group, GitlabGroup):
               g = self.createGroup(group.name)
@@ -76,10 +77,6 @@ class Gitlab:
       """Does a simple get request on the wiki url to force the
       creating of the wiki repository."""
       r = requests.get(project.wiki_url, headers=self._headers)
-
-  def _translateRepoName(self, repo):
-      # Need to downcase string as well
-      return re.sub('\.', '-', repo.lower())
 
 class GitlabGroup:
     id = -1
@@ -115,4 +112,4 @@ class AuthenticationError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": Unable to authenticate to gitlab API:", repr(self.value)
+        print(": Unable to authenticate to gitlab API:", repr(self.value))

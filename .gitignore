@@ -2,3 +2,7 @@
 *.log
 *.out
 *.pyc
+
+# Ignore any virtual environments
+\.venv
+

@@ -1,66 +1,102 @@
+import tomllib
+import pathlib
+import os
+
 import gitlab
 
-token = '<need_token>'
+configFile = os.path.join(pathlib.Path.home(), ".ghsyncrc")
 
-gl = gitlab.Gitlab('http://iroh.local', token)
+with open(configFile, "rb") as f:
+    config = tomllib.load(f)
 
-group = gl.findGroup('gh_sync')
-print group.id
-print group.name
-print group.path
-print group.owner_id
+gl_token = config["gitlab-token"]
+gl_url = config["gitlab-url"]
+gl = gitlab.Gitlab(gl_url, gl_token)
 
-project = gl.findProject('gh_sync', 'gh_sync')
-print project.id
-print project.wiki_enabled
-print project.name
-print project.path
-print project.web_url
-print project.wiki_url
-print project.wiki_path
+test_group = "gitlabUtilities"
 
+print(f"Find group \"{test_group}\" by name.  Print some information about the group")
+group = gl.findGroup(test_group)
+print(f"Group ID: {group.id}")
+print(f"Group Name: {group.name}")
+print(f"Group Path: {group.path}")
+
+test_project = "gh_sync"
+print(f"Find project \"{test_project}\" in group \"{test_group}\", both by name.",
+      "Print information about the project")
+project = gl.findProject(test_project, test_group)
+print(f"Project ID: {project.id}")
+print(f"Project Wiki: {project.wiki_enabled}")
+print(f"Project Name: {project.name}")
+print(f"Project Path: {project.path}")
+print(f"Project Web URL: {project.web_url}")
+print(f"Project Wiki URL: {project.wiki_url}")
+print(f"Project Wiki Path: {project.wiki_path}")
+
+print(f"Find project \"{test_project}\" in group \"{test_group}\", project by name, group by object",
+      "Print information about the project")
 project = gl.findProject('gh_sync', group)
-print project.id
-print project.wiki_enabled
-print project.name
-print project.path
-print project.web_url
-print project.wiki_url
-print project.wiki_path
+print(f"Project ID: {project.id}")
+print(f"Project Wiki: {project.wiki_enabled}")
+print(f"Project Name: {project.name}")
+print(f"Project Path: {project.path}")
+print(f"Project Web URL: {project.web_url}")
+print(f"Project Wiki URL: {project.wiki_url}")
+print(f"Project Wiki Path: {project.wiki_path}")
 
-project = gl.createProject('test_project', 'gh_sync')
-print project.id
-print project.wiki_enabled
-print project.name
-print project.path
-print project.web_url
-print project.wiki_url
-print project.wiki_path
+print("Look for an group that doesn't exist",
+      "The group ID should be \"-1\"")
+group = gl.findGroup('noGroup')
+print(f"Group ID: {group.id}")
 
-project = gl.createProject('test_project2', group, wiki_enabled=True)
-print project.id
-print project.wiki_enabled
-print project.name
-print project.path
-print project.web_url
-print project.wiki_url
-print project.wiki_path
+# Everything below was tested, but as I was testing against a
+# production server, I have left this as commented out, for now.
 
-project = gl.createProject('test_project3', 'new_group')
-print project.id
-print project.wiki_enabled
-print project.name
-print project.path
-print project.web_url
-print project.wiki_url
-print project.wiki_path
+# test_project = "test_project"
+# test_group = "test"
+# print(f"Create \"{test_project}\" in group \"{test_group}\".",
+#       "Print information about the new project")
+# project = gl.createProject(test_project, test_group)
+# print(f"Project ID: {project.id}")
+# print(f"Project Wiki: {project.wiki_enabled}")
+# print(f"Project Name: {project.name}")
+# print(f"Project Path: {project.path}")
+# print(f"Project Web URL: {project.web_url}")
+# print(f"Project Wiki URL: {project.wiki_url}")
+# print(f"Project Wiki Path: {project.wiki_path}")
+
+# test_project = "test_project2"
+# test_group = "test"
+# group = gl.findGroup(test_group)
+# print(f"Create project \{test_project}\" in group \"{test_group}\".",
+#       "Print information about the new project.")
+# project = gl.createProject('test_project2', group, wiki_enabled=True)
+# print(f"Project ID: {project.id}")
+# print(f"Project Wiki: {project.wiki_enabled}")
+# print(f"Project Name: {project.name}")
+# print(f"Project Path: {project.path}")
+# print(f"Project Web URL: {project.web_url}")
+# print(f"Project Wiki URL: {project.wiki_url}")
+# print(f"Project Wiki Path: {project.wiki_path}")
+
+# test_project = "test_project"
+# test_group = "testGroup"
+# print(f"Create project \"{test_project}\" in new group \"{test_group}\".",
+#       "Print information about the new project.")
+# project = gl.createProject(test_project, test_group)
+# print(f"Project ID: {project.id}")
+# print(f"Project Wiki: {project.wiki_enabled}")
+# print(f"Project Name: {project.name}")
+# print(f"Project Path: {project.path}")
+# print(f"Project Web URL: {project.web_url}")
+# print(f"Project Wiki URL: {project.wiki_url}")
+# print(f"Project Wiki Path: {project.wiki_path}")
+
 #TODO test what import_url does
 
-# group = gl.findGroup('noGroup')
-# print group.id
 
+# print("Attempt to create a new group \"testGroup\"")
 # group = gl.createGroup('testGroup')
-# print group.id
-# print group.name
-# print group.path
-# print group.owner_id
+# print(f"Group ID: {group.id}")
+# print(f"Group Name: {group.name}")
+# print(f"Group Path: {group.path}")
