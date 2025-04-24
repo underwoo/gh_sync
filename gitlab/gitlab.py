@@ -38,7 +38,6 @@ class Gitlab:
       project = GitlabProject()
       if group != None:
           grpName=""
-          print(f"debug: {type(group)}")
           if isinstance(group, str):
               grpName = group
           elif isinstance(group, GitlabGroup):
@@ -78,6 +77,64 @@ class Gitlab:
       creating of the wiki repository."""
       r = requests.get(project.wiki_url, headers=self._headers)
 
+  def importGitHub(self, gh_repo, gl_group):
+      """Import a GitHub public repository to a GitLab namespace.
+      The repository name will be the same as the GitHub repository
+      name.
+
+      Arguments:
+
+      gh_repo: The GitHub.com repository to clone using the format
+               "OWNER/REPO".
+
+      gl_group: The GitLab group where to place the imported GitHub
+                repository.
+      """
+      # Get the GitHub repository.  Simply use requests to the GitHub.com API.
+      # TODO: Update the GitHub class to get the ID
+      r_gh_repo = requests.get('/'.join(["https://api.github.com", "repos", gh_repo]))
+      if (r_gh_repo.status_code != requests.codes.ok):
+          raise Exception(f"Unable to get GitHub repository: {gh_repo}")
+      p_gh_repo = json.loads(r_gh_repo.text or r_gh_repo.content)
+      # Check if the GitLab project already exists, instead of just doing the PUSH
+      # If it exists, just return the project object
+      gl_project = self.findProject(p_gh_repo["name"], gl_group)
+      if gl_project == -1:
+          # The GitLab project doesn't exist, start the import
+          gl_payload = {
+              "personal_access_token": "NOPE",
+              "repo_id": p_gh_repo['id'],
+              "target_namespace": gl_group,
+          }
+          r = requests.post('/'.join([self._api_url, 'import', 'github']), gl_payload, headers=self._headers)
+          if r.status_code == requests.codes.ok:
+              gl_project = self.findProject(p_gh_repo['name'], gl_group)
+      return gl_project
+
+  def importStatus(self, proj):
+      """Get the import status of a specified GitLab project.
+
+      Arguments:
+      proj: The GitLab project, either as a GitlabProject object,
+            or as a string in the format of "GROUP/PROJECT".
+      """
+      # Determine what type was passed
+      proj_path = ""
+      if isinstance(proj, str):
+          proj_path = proj
+      elif isinstance(proj, GitlabProject):
+          proj_path = proj.path
+      [gl_group, gl_proj] = proj_path.split("/")
+      project = self.findProject(gl_proj, gl_group)
+      r = requests.get('/'.join([self._api_url, 'projects', str(project.id), "import"]),
+                       headers=self._headers)
+      status = None
+      if r.status_code == requests.codes.ok:
+          p = json.loads(r.text or r.content)
+          status = p['import_status']
+      return status
+
+
 class GitlabGroup:
     id = -1
     name = None
@@ -87,6 +144,7 @@ class GitlabGroup:
         setattr(self, 'id', id)
         setattr(self, 'name', name)
         setattr(self, 'path', path)
+
 
 class GitlabProject:
     id = -1
@@ -103,10 +161,11 @@ class GitlabProject:
         setattr(self, 'web_url', url)
         setattr(self, 'wiki_enabled', wiki_enabled)
         if path:
-            setattr(self, 'path', path+'.git')
+            setattr(self, 'path', path)
         if wiki_enabled:
             setattr(self, 'wiki_url', url+'/wikis/home')
             setattr(self, 'wiki_path', path+'.wiki.git')
+
 
 class AuthenticationError(Exception):
     def __init__(self, value):
