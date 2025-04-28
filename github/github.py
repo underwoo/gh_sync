@@ -1,6 +1,8 @@
 import json
 import re
 import requests
+import sys
+from urllib.parse import urljoin
 
 class Github:
   _api_url = 'https://api.github.com/'
@@ -17,12 +19,13 @@ class Github:
     # check if type is known
     # TODO: Need to throw an exception
     if (type!='users' and type!='orgs'):
-      print "Need to throw an exception --- Just not sure what kind yet"
-    url=self._api_url+type+'/'+name+'/repos'
+        raise OwnerTypeError(type)
+    url=urljoin(self._api_url, "/".join([type, name, "repos"]))
     try:
         r = requests.get(url, headers=self._headers)
     except:
-        print "An error has occured."
+        print("Error getting GitHub {type} repositories for {name}",
+              file=sys.stderr)
         raise
     if (r.status_code != requests.codes.ok):
         raise URLNotFound(url)
@@ -32,6 +35,7 @@ class Github:
       repo_has_wiki=repo['has_wiki'] and repo['has_pages']
       ghr.append(GithubRepo(repo['name'], repo['ssh_url'], repo['clone_url'], repo_has_wiki))
     return ghr
+
 
 class GithubRepo:
   ssh_url = None
@@ -49,20 +53,30 @@ class GithubRepo:
         setattr(self, 'wiki_url', re.sub(r"\.git$", ".wiki.git", self.clone_url))
         setattr(self, 'wiki_ssh_url', re.sub(r"\.git$", ".wiki.git", self.ssh_url))
 
+
 class ConnectionError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": "
+        print(f": {repr(self.value)}")
+
 
 class URLNotFound(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": Unable to find URL:", self.value
+        print(f": Unable to find URL: {repr(self.value)}")
+
 
 class AuthenticationError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": Unable to authenticate to github API:", repr(self.value)
+        print(f": Unable to authenticate to github API: {repr(self.value)}")
+
+
+class OwnerTypeError(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        print(f": Unknown GitHub owner type: {repr(self.value)}")
