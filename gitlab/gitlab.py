@@ -1,22 +1,50 @@
 import json
-import re
 import requests
 import urllib
+import urllib.parse
+import sys
 
 class Gitlab:
     _api_url = None
     _headers = None
 
     def __init__(self, url, token):
-      setattr(self, '_api_url', url+'/api/v4')
-      setattr(self, '_headers', { 'PRIVATE-TOKEN' : token })
-      r = requests.get('/'.join([self._api_url,'projects']), headers=self._headers)
-      if (r.status_code != requests.codes.ok):
-          raise AuthenticationError("Invalid token")
+        """Initailze a connection to a GitLab instance using the v4 API.
+
+        Arguments
+
+        url: Base URL to the GitLab instance
+        token: A GitLab access token.  The token must have at least the
+            API and write_repository scopes.
+        """
+        setattr(self, '_api_url', urllib.parse.urljoin(url, "api/v4"))
+        setattr(self, '_headers', { 'PRIVATE-TOKEN' : token })
+        try:
+            r = requests.get('/'.join([self._api_url,
+                                       'projects']),
+                             headers=self._headers)
+        except Exception:
+            print(f"Error connecting to \"{self._api_url}\"",
+                  file=sys.stderr)
+            raise
+        if (r.status_code != requests.codes.ok):
+            if r.status_code == 401:
+                raise AuthenticationError("Invalid token")
+            else:
+                raise ConnectionError(r.status.code, r.reason)
 
     def findGroup(self, name):
-        group = GitlabGroup()
-        r = requests.get('/'.join([self._api_url,'groups',urllib.parse.quote_plus(name)]), headers=self._headers)
+        """Find a GitLab group.
+
+        Arguments
+
+        name: Name of the GitLab group to find.
+        """
+        group = None
+        r = requests.get('/'.join([self._api_url,
+                                   'groups',
+                                   urllib.parse.quote_plus(name)]),
+                         headers=self._headers)
         if r.status_code == requests.codes.ok:
             g = json.loads(r.text or r.content)
             if g['name'] == name:
@@ -24,18 +52,34 @@ class Gitlab:
         return group
 
     def createGroup(self, name):
+        """Create a GitLab group
+
+        Arguments
+
+        name: Name of the GitLab group
+        """
         # Make sure group doesn't exist
         group = self.findGroup(name)
         if group.id == -1:
             payload={ 'name': name, 'path': name}
-            r = requests.post('/'.join([self._api_url,'groups']), payload, headers=self._headers)
+            r = requests.post('/'.join([self._api_url,
+                                        'groups']),
+                              payload,
+                              headers=self._headers)
             if r.status_code == 201:
                 g = json.loads(r.text or r.content)
                 group = GitlabGroup(g['id'], g['name'], g['path'])
         return group
 
     def findProject(self, name, group=None):
-        project = GitlabProject()
+        """Find a GitLab project, and return a GitlabProject object.
+
+        Arguments:
+
+        name: GitLab project name to find.
+        group: GitLab group that should contain the project.
+        """
+        project = None
         if group != None:
             grpName=""
             if isinstance(group, str):
@@ -51,6 +95,16 @@ class Gitlab:
         return project
 
     def createProject(self, name, group, wiki_enabled=False):
+        """Create a GitLab project within the GitLab group.
+
+        Arguments:
+
+        name: GitLab project name to create
+        group: GitLab group to use to create the project.  The group
+               will be created if it doesn't exist.
+        wiki_enabled: Indicate if the wiki should be enabled for this
+               project.
+        """
         project = GitlabProject()
         g = GitlabGroup()
         # Check if group exists, if not create group
@@ -117,19 +171,30 @@ class Gitlab:
               or as a string in the format of "GROUP/PROJECT".
         """
         # Determine what type was passed
-        proj_path = ""
+        proj_id = ""
         if isinstance(proj, str):
-            proj_path = proj
+            try:
+                [gl_group, gl_proj] = proj.spli("/")
+                project = self.findProject(gl_proj, gl_group)
+                proj_id = str(project.id)
+            except:
+                print(f"Error finding GitLab project \"proj\"",
+                      file=sys.stderr)
+                raise
         elif isinstance(proj, GitlabProject):
-            proj_path = proj.path
-        [gl_group, gl_proj] = proj_path.split("/")
-        project = self.findProject(gl_proj, gl_group)
-        r = requests.get('/'.join([self._api_url, 'projects', str(project.id), "import"]),
+            proj_id = str(proj.id)
+        r = requests.get('/'.join([self._api_url,
+                                   'projects',
+                                   proj_id,
+                                   "import"]),
                         headers=self._headers)
         status = None
         if r.status_code == requests.codes.ok:
             p = json.loads(r.text or r.content)
             status = p['import_status']
+        else:
+            print(f"Error getting import status: {r.status_code} {r.reason}",
+                  file=sys.stderr)
         return status
 
     def setPullMirror(self, gl_proj, gh_repo):
@@ -141,45 +206,58 @@ class Gitlab:
         gl_proj: The GitLab project that will pull from GitHub.  This
                  can be a type(GitlabProject), a string GROUP/PROJ, or
                  an integer with the GitLab ID.
-        gh_repo: The GitHub repository to pull from.  This can be a
-                 type(GithubProject) or a string OWNER/REPO.
+        gh_repo: The full URL to a GitHub repository to pull from.
         """
-        proj_path = ""
+        gl_proj_id = ""
+        gl_proj_name = ""
         if isinstance(gl_proj, str):
-            proj_path = gl_proj
+            try:
+                [gl_group, gl_proj] = proj.spli("/")
+                project = self.findProject(gl_proj, gl_group)
+                gl_proj_id = str(project.id)
+                gl_proj_name = project.name
+            except:
+                print(f"Error finding GitLab project \"proj\"",
+                      file=sys.stderr)
+                raise
         elif isinstance(gl_proj, GitlabProject):
-            proj_path = gl_proj.path
-        [gl_group, gl_project] = proj_path.split("/")
-        project = self.findProject(gl_project, gl_group)
-        # Set the github_mirror_url
-        github_mirror_url = f"https://github.com/{gh_repo}.git"
+            gl_proj_id = str(gl_proj.id)
+            gl_proj_name = gl_proj.name
+        # Set the github_mirror_url, and make sure it ends with ".git"
+        github_mirror_url = gh_repo
+        if not gh_repo.endswith(".git"):
+            github_mirror_url = gh_repo + ".git"
         # Check if the GitLab repository already has mirroring setup
         # for this URL
         # Code of 200 means the repository is mirrored
         # Code of 400 means the repository is not mirrored
-        r = requests.get("/".join([self._api_url, "projects", str(project.id), "mirror/pull"]),
+        r = requests.get("/".join([self._api_url,
+                                   "projects",
+                                   gl_proj_id,
+                                   "mirror/pull"]),
                          headers=self._headers)
-        do_conf = False
         if r.status_code == 200:
             # Check the URL
             p = json.loads(r.text or r.content)
-            if p["url"] != github_mirror_url:
-                # We do not need to push a new configuration
-                do_conf = True
+            if p["url"] == github_mirror_url:
+                # We do need to push a new configuration
+                return True
         elif r.status_code == 400:
             do_conf = True
         else:
-            raise(Exception(f"Unable to get status of pull mirror ({r.status_code}): {gl_proj}"))
+            raise(Exception(f"Unable to get status of pull mirror ({r.status_code}): {r.reason}"))
 
-        if do_conf:
-            # Add a new mirror URL
-            payload = {"enabled": "true",
-                       "url": github_mirror_url}
-            r = requests.put("/".join([self._api_url, "projects", str(project.id), "mirror/pull"]),
-                             payload,
-                             headers=self._headers)
-            print("status_code:", r.status_code)
-        return project
+        # If we are here, update the pull configuration
+        payload = {"enabled": "true",
+                    "url": github_mirror_url}
+        r = requests.put("/".join([self._api_url,
+                                    "projects",
+                                    gl_proj_id,
+                                    "mirror/pull"]),
+                            payload,
+                            headers=self._headers)
+        print("status_code:", r.status_code)
+        return True
 
 
 class GitlabGroup:
@@ -218,4 +296,12 @@ class AuthenticationError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print(": Unable to authenticate to gitlab API:", repr(self.value))
+        return f": Unable to authenticate to gitlab API: {repr(self.value)}"
+
+
+class ConnectionError(Exception):
+    def __init__(self, value, msg):
+        self.value = value
+        self.msg = msg
+    def __str__(self):
+        return f": Unable to connect to the GitLab API: {repr(self.value)} {msg}"

@@ -5,14 +5,46 @@ import sys
 
 import gitlab
 
+# Variables to hold configuration information
+gl_token = None
+gl_url = None
+
 configFile = os.path.join(pathlib.Path.home(), ".ghsyncrc")
 
-with open(configFile, "rb") as f:
-    config = tomllib.load(f)
+if os.path.exists(configFile):
+    try:
+        with open(configFile, "rb") as f:
+            config = tomllib.load(f)
+        gl_token = config["gitlab-token"]
+        gl_url = config["gitlab-url"]
+    except Exception as err:
+        print(f"Error reading file: {err}",
+              file=sys.stderr)
+        raise
 
-gl_token = config["gitlab-token"]
-gl_url = config["gitlab-url"]
-gl = gitlab.Gitlab(gl_url, gl_token)
+# Read configuration information from environment variables if set.
+try:
+    if os.getenv("GHSYNC_GITLAB_URL", None) is not None:
+        gl_url = os.getenv("GHSYNC_GITLAB_URL")
+except Exception as err:
+    print(f"Error reading environment variable \"GHSYNC_GITLAB_URL\": {err}",
+          file=sys.stderr)
+    raise
+try:
+    if os.getenv("GHSYNC_GITLAB_TOKEN", None) is not None:
+        gl_token = os.getenv("GHSYNC_GITLAB_TOKEN")
+except Exception as err:
+    print(f"Error reading environment variable \"GHSYNC_GITLAB_TOKEN\": {err}",
+          file=sys.stderr)
+    raise
+
+# Setup the GitLab object -- requires authentication
+try:
+    gl = gitlab.Gitlab(gl_url, gl_token)
+except Exception as err:
+    print(f"Error establishing a connection to GitLab server at \"{gl_url}\": {err}",
+          file=sys.stderr)
+    raise
 
 test_project = "test/FMS"
 print(f"Import Status (by name): {gl.importStatus(test_project)}")
