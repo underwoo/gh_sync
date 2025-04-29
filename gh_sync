@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import re
-import ConfigParser
+import configparser
 import os
 import subprocess
 import logging
@@ -12,7 +12,7 @@ import github
 import gitlab
 
 def readConfig(configFile='~/.gitlabsyncrc'):
-    config = ConfigParser.ConfigParser()
+    config = configparser.ConfigParser()
     config.read(configFile)
 
     # Read in core options
@@ -28,7 +28,7 @@ def readConfig(configFile='~/.gitlabsyncrc'):
     return conf
 
 def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
-    config = ConfigParser.ConfigParser()
+    config = configparser.ConfigParser()
     config.read(configFile)
 
     # Return value, with defaults:
@@ -146,6 +146,12 @@ def main():
         if glProject.id != -1:
             # Repository exists, Sync the project repository
             updateRepo(ghRepo.clone_url, os.path.join(config['gitlabRepoBase'],glProject.path), ghRepo.ssh_url)
+
+            ##check if mirror exists, if not create one
+            ##gl.mirrorRepo(ghRepo.clone_url, config['githuborg'], config['GHtoken'], glProject.id)
+
+            ##ensure that source github repo includes a webhook
+            ##gh.createWebHook(config['githuborg'], ghRepo.name, gl._api_url)
 
             # Now sync the wiki repo
             if ghRepo.has_wiki:
