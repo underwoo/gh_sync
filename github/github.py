@@ -17,12 +17,12 @@ class Github:
     # check if type is known
     # TODO: Need to throw an exception
     if (type!='users' and type!='orgs'):
-      print "Need to throw an exception --- Just not sure what kind yet"
+      print("Need to throw an exception --- Just not sure what kind yet")
     url=self._api_url+type+'/'+name+'/repos'
     try:
         r = requests.get(url, headers=self._headers)
     except:
-        print "An error has occured."
+        print("An error has occured.")
         raise
     if (r.status_code != requests.codes.ok):
         raise URLNotFound(url)
@@ -32,6 +32,23 @@ class Github:
       repo_has_wiki=repo['has_wiki'] and repo['has_pages']
       ghr.append(GithubRepo(repo['name'], repo['ssh_url'], repo['clone_url'], repo_has_wiki))
     return ghr
+
+  def createWebHook(self, group, repo, gl_api):
+
+     webhook_data = {
+        'name': 'web',
+        'active': True,
+        'events': ['push'],
+        'config': ({
+           'url': gl_api,
+           'content_type': 'json',
+           'insecure_ssl': '0'
+
+        })
+     }
+     #may require additional headers
+     r = requests.post('/'.join([self._api_url, 'repos', group, repo, 'hooks']), headers=self._headers, data=webhook_data)
+     #needs error handling
 
 class GithubRepo:
   ssh_url = None
@@ -53,16 +70,16 @@ class ConnectionError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": "
+        print(": ")
 
 class URLNotFound(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": Unable to find URL:", self.value
+        print(": Unable to find URL:", self.value)
 
 class AuthenticationError(Exception):
     def __init__(self, value):
         self.value = value
     def __str__(self):
-        print ": Unable to authenticate to github API:", repr(self.value)
+        print(": Unable to authenticate to github API:", repr(self.value))

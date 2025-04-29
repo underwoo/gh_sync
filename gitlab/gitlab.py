@@ -73,6 +73,26 @@ class Gitlab:
                                   p['web_url'], p['wiki_enabled'])
       return project
 
+  def mirrorRepo(self, source_url, group, GHtoken, id):
+
+    mirror_data = {
+        'enabled': True,
+        'url': source_url,
+        'auth_user': group,
+        'auth_password': GHtoken,
+        'mirror_overwrites_diverged_branches': True
+    }
+
+
+    #Configure pull mirroring for project
+    r = requests.put(source_url, headers=self._headers, data=mirror_data)
+
+
+    #Start mirror pulling
+    pull = requests.post('/'.join([self._api_url, 'projects', id,'mirror','pull']), headers=self._headers)
+    #needs error handling
+
+
   def touchProjectWiki(self, project):
       """Does a simple get request on the wiki url to force the
       creating of the wiki repository."""
