@@ -1,5 +1,7 @@
-#!/usr/bin/env python
-
+#!/usr/bin/env python3
+#
+# spell-checker:words GHSYNC Htoken LOGDIR ghsyncrc githuborg
+# spell-checker:words gitlaborg gitlabsyncrc levelname
 import re
 import configparser
 import os
@@ -11,7 +13,7 @@ import sys
 import github
 import gitlab
 
-def readConfig(configFile='~/.gitlabsyncrc'):
+def readConfig(configFile='~/.ghsyncrc'):
     config = configparser.ConfigParser()
     config.read(configFile)
 
@@ -42,130 +44,130 @@ def getRepoConfig(repo, configFile='~/.gitlabsyncrc'):
             conf['gitlabRepo'] = config.get(repo,'gitLabRepoName')
     return conf
 
-def getRepoRemoteName(repo_path, remote_url, ssh_url=None):
-    """Return the repository's remote name.  This only returns the first
-    remote name that matches remote_url (if there are more than one).  If
-    the remote name doesn't exist, then it creates a 'github' remote in the
-    repository at repo_path (repo_path must exist)."""
 
-    # Default return is None
-    remote_name = None
+def getEnv(env_var):
+    try:
+        if os.getenv(env_var, None) is not None:
+            return os.getenv(env_var)
+    except Exception as err:
+        print(f"Error reading environment variable \"{env_var}\": {err}",
+              file=sys.stderr)
+        raise
+    return None
 
-    # Check if repo_path exists
-    if os.path.isdir(repo_path):
-        # Check if remote is available
-        logging.debug("Checking for git remote in repository: "+repo_path)
-        pr = subprocess.Popen(['git', 'remote', '-v'],
-                              cwd=repo_path,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              shell=False)
-        (out, err) = pr.communicate()
-        if err:
-            logging.warning("git remote -v\n"+err)
-
-        # Remove ssh remote
-        match = re.search('(\S+)\s'+str(ssh_url)+'\s+\(fetch\)', out)
-        if match and ssh_url != None:
-            remote_name = match.group(1)
-            pr = subprocess.Popen(['git', 'remote', '-v', 'remove', remote_name],
-                                  cwd=repo_path,
-                                  stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE,
-                                  shell=False)
-            (out, err) = pr.communicate()
-            if err:
-                logging.warning("git remote remove "+remote_name+"\n"+err)
-            remote_name = None
-
-        match = re.search('(\S+)\s'+str(remote_url)+'\s+\(fetch\)', out)
-        if match:
-            remote_name = match.group(1)
-        else:
-            # Remote doesn't exist, setup the remote
-            remote_name = 'github'
-            logging.info("Adding remote to repository: "+repo_path)
-            pr = subprocess.Popen(['git', 'remote', 'add', '--mirror=fetch', remote_name, remote_url],
-                                  cwd=repo_path,
-                                  stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE,
-                                  shell=False)
-            (out, err) = pr.communicate()
-            if err:
-                logging.warning("git remote add --mirror=fetch "+remote_name+" "+remote_url+"\n"+err)
-    return remote_name
-
-def updateRepo(source_url, target_path, ssh_url=None):
-    remote_name = getRepoRemoteName(target_path, source_url, ssh_url)
-
-    if remote_name:
-        logging.info("Updating remote repository: "+source_url)
-        pr = subprocess.Popen(['git', 'remote', '-v', 'update', '-p', remote_name],
-                              cwd=target_path,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              shell=False)
-        (out, err) = pr.communicate()
-        if out:
-            logging.info("git remote update "+remote_name+"\n"+out)
-        if err:
-            logging.warning("git remote update "+remote_name+"\n"+err)
 
 # Main program
 def main():
-    myConfigFile = os.getcwd()+'/gh_sync.conf'
-    config = readConfig(myConfigFile)
+    # Looking for multiple configuration files in the following order.
+    # The first file found will be used:
+    #
+    #   - gh_sync.conf in the current directory
+    #   - $HOME/.gitlabsyncrc
+    #
+    # The following Environment Variables will override the
+    # configuration files
+    #
+    #   - GHSYNC_GITLAB_URL
+    #   - GHSYNC_GITLAB_TOKEN
+    #   - GHSYNC_GITLAB_GROUP
+    #   - GHSYNC_GITHUB_ORG
+    #   - GHSYNC_GITHUB_TOKEN
+    #   - GHSYNC_LOGDIR
 
-    logging.basicConfig(filename=config['logDir']+'/gh_sync.log',
+    # The only default value in the configuration is th log directory
+    config = {
+        "githuborg":  None,
+        "gitlaborg":  None,
+        "gitlabRepoBase":  None,
+        "GHtoken":  None,
+        "GLtoken":  None,
+        "GLurl":  None,
+        "logDir": os.getcwd()}
+    configFiles = [
+        os.path.join(os.getcwd(), "gh_sync.conf"),
+        os.path.join(os.path.expanduser("~"), ".ghsyncrc")
+    ]
+    myConfigFile = None
+    for conf_file in configFiles:
+        if os.path.exists(conf_file):
+            myConfigFile = conf_file
+            config = readConfig(myConfigFile)
+            break
+    # Override anything from the environment
+    config['GLurl'] = getEnv("GHSYNC_GITLAB_URL") or config['GLurl']
+    config['GLtoken'] = getEnv("GHSYNC_GITLAB_TOKEN") or config['GLtoken']
+    config['gitlaborg'] = getEnv("GHSYNC_GITLAB_GROUP") or config['gitlaborg']
+    config['githuborg'] = getEnv("GHSYNC_GITHUB_ORG") or config['githuborg']
+    config['GHtoken'] = getEnv("GHSYNC_GITHUB_TOKEN") or config['GHtoken']
+    config['logDir'] = getEnv("GHSYNC_LOGDIR") or config['logDir']
+
+    logging.basicConfig(filename=os.path.join(config['logDir'], "gh_sync.log"),
                         format='%(asctime)s [%(levelname)s] %(message)s',
                         datefmt='%Y-%m-%dT%H:%M:%S',
                         level=logging.INFO)
     logging.info('*' * 72)
     logging.info('Starting gitHub sync')
+    # Print the configuration (minus the Tokens) to the logs
+    logging.info(f'GitLab URL: {config['GLurl']}')
+    logging.info(f'GitLab Group: {config['gitlaborg']}')
+    logging.info(f'GitHub Organization: {config['githuborg']}')
 
-    # Connect to gitHub
-    gh = github.Github(token=config['GHtoken'])
-
-    # Connect to gitlab
-    gl = gitlab.Gitlab(config['GLurl'], config['GLtoken'])
+    try:
+        # Connect to gitHub
+        logging.info(f"Starting connection to GitHub")
+        gh = github.Github(token=config['GHtoken'])
+    except:
+        logging.critical("Failed to connect to GitHub")
+        raise
+    try:
+        # Connect to gitlab
+        gl = gitlab.Gitlab(config['GLurl'], config['GLtoken'])
+    except:
+        logging.critical(f"Failed to connect to GitLab at {config['GLurl']}")
+        raise
 
     for ghRepo in gh.getRepos(name=config['githuborg'], type="orgs"):
-        logging.info('Starting sync of '+ghRepo.name)
+        logging.info('Starting mirror of '+ghRepo.name)
+        try:
+            repoConfig = getRepoConfig(ghRepo.name, myConfigFile)
 
-        repoConfig = getRepoConfig(ghRepo.name, myConfigFile)
+            glProject = gl.findProject(repoConfig['gitlabRepo'], repoConfig['gitlaborg'])
+            if glProject.id == -1:
+                # No gitlab project found
+                logging.info(f"Importing new repository {repoConfig['gitlaborg']}/{ghRepo.name} from {ghRepo.full_name}")
+                # Start the Import
+                glProject = gl.importGitHub(gh, ghRepo, repoConfig['gitlaborg'])
+                # A brief pause until we continue
+                time.sleep(5)
 
-        glProject = gl.findProject(repoConfig['gitlabRepo'], repoConfig['gitlaborg'])
-        if glProject.id == -1:
-            # No gitlab project found
-            logging.info("Creating new repository: "+repoConfig['gitlaborg']+'/'+ghRepo.name)
-            glProject = gl.createProject(ghRepo.name, repoConfig['gitlaborg'],
-                                    wiki_enabled=ghRepo.has_wiki)
-            # Give time for the repository directory to be created
-            time.sleep(5)
-
-        if glProject.id != -1:
-            # Repository exists, Sync the project repository
-            updateRepo(ghRepo.clone_url, os.path.join(config['gitlabRepoBase'],glProject.path), ghRepo.ssh_url)
-
-            ##check if mirror exists, if not create one
-            ##gl.mirrorRepo(ghRepo.clone_url, config['githuborg'], config['GHtoken'], glProject.id)
-
-            ##ensure that source github repo includes a webhook
-            ##gh.createWebHook(config['githuborg'], ghRepo.name, gl._api_url)
-
-            # Now sync the wiki repo
-            if ghRepo.has_wiki:
-                # Verify that the wiki path exists
-                gl_wiki_path = os.path.join(config['gitlabRepoBase'],glProject.wiki_path)
-                if not os.path.isdir(gl_wiki_path):
-                    # Simply touch the wiki page to create the wiki repository
-                    gl.touchProjectWiki(glProject)
-                    # Give time for the repository directory to be created
-                    time.sleep(5)
-                updateRepo(ghRepo.wiki_url, os.path.join(config['gitlabRepoBase'],glProject.wiki_path), ghRepo.wiki_ssh_url)
+            # The previous block will create the project.
+            if glProject.id != -1:
+                # Check if the import is complete
+                import_status = gl.importStatus(glProject)
+                if import_status == "failed":
+                    # Something happened that needs to be addressed manually
+                    logging.critical(f"Mirror failed for {"/".join([repoConfig['gitlaborg'], ghRepo.name])}.  Skipping . . .")
+                else:
+                    sleep_time = 30
+                    # Wait for the project import to finish before continuing
+                    while import_status != "finished" and sleep_time < 500:
+                        time.sleep(sleep_time)
+                        sleep_time = sleep_time + 60
+                        import_status = gl.importStatus(glProject)
+                    if import_status != "finished":
+                        logging.warning(f"Import of {ghRepo.full_name} is taking too long.  Skipping . . .")
+                    else:
+                        # Repository exists, ensure the pull sync is configured
+                        if gl.setPullMirror(glProject, ghRepo.clone_url):
+                            logging.info(f"Project {"/".join([repoConfig['gitlaborg'], ghRepo.name])} configured to pull mirror")
+                        else:
+                            logging.warning(f"Failed to configure project {"/".join([repoConfig['gitlaborg'], ghRepo.name])} for pull mirror")
+                        # Now we should add the GitHub web hook, if we decide to do that.
+                        # ##gh.createWebHook(config['githuborg'], ghRepo.name, gl._api_url)
+        except:
+            logging.critical(f'Error occurred during mirror of {"/".join([repoConfig['gitlaborg'], ghRepo.name])}')
         else:
-            logging.info("Could not find project in gitlab "+"/".join([repoConfig['gitlaborg'],repoConfig['gitlabRepo']]))
-        logging.info('Ending sync of '+ghRepo.name)
+            logging.info('Ending mirror of '+ghRepo.name)
     logging.info('Ending gitHub sync')
 
 if __name__ == "__main__":
